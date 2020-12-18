@@ -71,7 +71,7 @@ fn main() {
         }
 
         on_nodes = next_on_nodes;
-        println!("On nodes after {} cycles 3D {:?}", cycle+1, on_nodes.len());
+        println!("On nodes after {} cycles 4D {:?}", cycle+1, on_nodes.len());
     }
 
     println!("Xmax {}, Xmin {}", on_nodes.iter().max_by_key(|n| n.x).unwrap().x, on_nodes.iter().min_by_key(|n| n.x).unwrap().x);

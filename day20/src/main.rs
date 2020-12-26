@@ -1,9 +1,15 @@
+#[derive(Clone, Debug)]
+struct Tile {
+    id: u16,
+    data: Vec<char>,
+}
+
 fn main() {
     let content = std::fs::read_to_string("input.txt").unwrap();
 
     let mut in_header = true;
     let mut tile_number = 0;
-    let mut tiles = std::collections::HashMap::new();
+    let mut tiles = Vec::new();
 
     let side_len = content.lines().next().unwrap().len();
 
@@ -17,22 +23,202 @@ fn main() {
                 .parse::<u16>()
                 .unwrap();
 
-            tiles.insert(tile_number, Vec::new());
+            tiles.push(Tile {
+                id: tile_number,
+                data: Vec::new(),
+            });
 
             in_header = false;
         } else if line.is_empty() {
             in_header = true;
         } else {
             let mut tile_row = line.chars().collect::<Vec<_>>();
-            tiles
-                .entry(tile_number)
-                .and_modify(|t| t.append(&mut tile_row));
+            let tile = tiles.iter_mut().find(|t| t.id == tile_number).unwrap();
+            tile.data.append(&mut tile_row);
         }
     }
 
-    for (tile_number, tile_content) in &tiles {
-        print!("\n{}", tile_number);
-        for (i, c) in tile_content.iter().enumerate() {
+    //print_tiles(&tiles, side_len);
+
+    let mut current = tiles.first().unwrap().clone();
+
+    loop {
+        let mut found = false;
+        let compare_side = side_to_int(get_sides(&current.data, side_len)[0].to_vec());
+        for tile in tiles.iter_mut() {
+            if tile.id == current.id {
+                continue;
+            }
+            for _ in 0..4 {
+                let mut side = side_to_int(get_sides(&tile.data, side_len)[2].to_vec());
+                if side == compare_side {
+                    found = true;
+                    current = tile.clone();
+                    break;
+                }
+                mirror(&mut tile.data, side_len);
+                side = side_to_int(get_sides(&tile.data, side_len)[2].to_vec());
+                if side == compare_side {
+                    found = true;
+                    current = tile.clone();
+                    break;
+                }
+                mirror(&mut tile.data, side_len);
+                rotate_right(&mut tile.data, side_len);
+            }
+            if found {
+                break;
+            }
+        }
+
+        if !found {
+            break;
+        }
+    }
+
+    loop {
+        let mut found = false;
+        let compare_side = side_to_int(get_sides(&current.data, side_len)[3].to_vec());
+        for tile in tiles.iter_mut() {
+            if tile.id == current.id {
+                continue;
+            }
+            for _ in 0..4 {
+                let mut side = side_to_int(get_sides(&tile.data, side_len)[1].to_vec());
+                if side == compare_side {
+                    found = true;
+                    current = tile.clone();
+                    break;
+                }
+                mirror(&mut tile.data, side_len);
+                side = side_to_int(get_sides(&tile.data, side_len)[1].to_vec());
+                if side == compare_side {
+                    found = true;
+                    current = tile.clone();
+                    break;
+                }
+                mirror(&mut tile.data, side_len);
+                rotate_right(&mut tile.data, side_len);
+            }
+            if found {
+                break;
+            }
+        }
+
+        if !found {
+            break;
+        }
+    }
+
+    println!("{}", current.id);
+
+    let mut used = vec![current];
+
+    let tiles_width = (tiles.len() as f32).sqrt() as usize;
+
+    while used.len() < tiles.len() {
+        let compare_side;
+        let mut next_side = 3;
+        if used.len() < tiles_width {
+            current = used.last().unwrap().clone();
+            compare_side = side_to_int(get_sides(&current.data, side_len)[1].to_vec());
+        } else {
+            current = used[used.len() - tiles_width].clone();
+            compare_side = side_to_int(get_sides(&current.data, side_len)[2].to_vec());
+            next_side = 0;
+        }
+        for tile in tiles.iter_mut() {
+            if used.iter().any(|t| t.id == tile.id) {
+                continue;
+            }
+            for _ in 0..4 {
+                let mut side = side_to_int(get_sides(&tile.data, side_len)[next_side].to_vec());
+                if side == compare_side {
+                    used.push(tile.clone());
+                    break;
+                }
+                mirror(&mut tile.data, side_len);
+                side = side_to_int(get_sides(&tile.data, side_len)[next_side].to_vec());
+                if side == compare_side {
+                    used.push(tile.clone());
+                    break;
+                }
+                mirror(&mut tile.data, side_len);
+                rotate_right(&mut tile.data, side_len);
+            }
+        }
+    }
+
+    let mut product = used.first().unwrap().id as u64;
+    product *= used[tiles_width - 1].id as u64;
+    product *= used[(tiles_width - 1) * tiles_width].id as u64;
+    product *= used.last().unwrap().id as u64;
+
+    println!("1. result {}", product);
+
+    let trimmed_data = used
+        .iter()
+        .map(|t| remove_edges(&t.data, side_len))
+        .collect::<Vec<_>>();
+
+    let trimmed_len = side_len - 2;
+
+    let mut combined_data = Vec::new();
+
+    for i in 0..tiles_width {
+        for j in 0..trimmed_len {
+            for k in 0..tiles_width {
+                combined_data.append(
+                    &mut trimmed_data[i * tiles_width + k]
+                        .iter()
+                        .skip(j * trimmed_len)
+                        .take(trimmed_len)
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                );
+            }
+        }
+    }
+
+    let combined_len = tiles_width * trimmed_len;
+
+    let target = "                  # #    ##    ##    ### #  #  #  #  #  #   "
+        .chars()
+        .collect::<Vec<_>>();
+
+    for _ in 0..4 {
+        let mut found = find(&mut combined_data, &target, combined_len);
+        if found {
+            break;
+        }
+        mirror(&mut combined_data, combined_len);
+        found = find(&mut combined_data, &target, combined_len);
+        if found {
+            break;
+        }
+        mirror(&mut combined_data, combined_len);
+        rotate_right(&mut combined_data, combined_len);
+    }
+
+    for (i, c) in combined_data.iter().enumerate() {
+        if i % (tiles_width * (trimmed_len)) == 0 {
+            print!("\n");
+        }
+        print!("{}", c);
+    }
+
+    println!();
+
+    println!(
+        "2. result {}",
+        combined_data.iter().filter(|c| c == &&'#').count()
+    );
+}
+
+fn print_tiles(tiles: &Vec<Tile>, side_len: usize) {
+    for tile in tiles {
+        print!("\n{}", tile.id);
+        for (i, c) in tile.data.iter().enumerate() {
             if i % side_len == 0 {
                 print!("\n");
             }
@@ -40,245 +226,6 @@ fn main() {
         }
         print!("\n");
     }
-
-    let mut side_mapping = std::collections::HashMap::new();
-
-    for (tile_number, tile_content) in &tiles {
-        let sides = get_sides(&tile_content, side_len);
-        for side in sides {
-            let mut rev_side = side.clone();
-            let side_id = side_to_int(side);
-            rev_side.reverse();
-            let rev_side_id = side_to_int(rev_side);
-
-            side_mapping
-                .entry(side_id)
-                .or_insert(std::collections::HashSet::new())
-                .insert(tile_number);
-            side_mapping
-                .entry(rev_side_id)
-                .or_insert(std::collections::HashSet::new())
-                .insert(tile_number);
-        }
-    }
-
-    let mut matching_sides = std::collections::HashMap::new();
-
-    for (_, tile_numbers) in &side_mapping {
-        if tile_numbers.len() > 1 {
-            for tile_number in tile_numbers {
-                matching_sides
-                    .entry(tile_number)
-                    .and_modify(|m| *m += 1)
-                    .or_insert(1);
-            }
-        }
-    }
-
-    println!("{:?}", matching_sides);
-
-    let product = matching_sides
-        .iter()
-        .filter(|(_, count)| **count == 4)
-        .fold(1, |prod, (tile_number, _)| prod * ***tile_number as u64);
-
-    println!("Product of corner tile numbers {}", product);
-
-    let upper_left_number = **matching_sides
-        .iter()
-        .find(|(_, count)| **count == 4)
-        .unwrap()
-        .0;
-
-    let mut upper_left = tiles.get(&upper_left_number).unwrap().clone();
-
-    loop {
-        let mut sides = get_sides(&upper_left, side_len);
-        let mut right = side_to_int(sides[1].to_vec());
-        let mut bottom = side_to_int(sides[2].to_vec());
-        if side_mapping.get(&right).unwrap().len() > 1
-            && side_mapping.get(&bottom).unwrap().len() > 1
-        {
-            break;
-        }
-        upper_left = mirror(&upper_left, side_len);
-        sides = get_sides(&upper_left, side_len);
-        right = side_to_int(sides[1].to_vec());
-        bottom = side_to_int(sides[2].to_vec());
-        if side_mapping.get(&right).unwrap().len() > 1
-            && side_mapping.get(&bottom).unwrap().len() > 1
-        {
-            break;
-        }
-        upper_left = mirror(&upper_left, side_len);
-        upper_left = rotate_right(&upper_left, side_len);
-        // println!();
-        // for (i, c) in upper_left.iter().enumerate() {
-        //     if i % side_len == 0 {
-        //         print!("\n");
-        //     }
-        //     print!("{}", c);
-        // }
-    }
-
-    println!("Upper left number {}", upper_left_number);
-    for (i, c) in upper_left.iter().enumerate() {
-        if i % side_len == 0 {
-            print!("\n");
-        }
-        print!("{}", c);
-    }
-    println!();
-
-    let mut locked_tiles = vec![(upper_left_number, upper_left)];
-
-    let image_width_in_tiles = (tiles.len() as f32).sqrt() as usize;
-
-    while locked_tiles.len() < tiles.len() {
-        let locked_len = locked_tiles.len();
-        let mut compare_tile = locked_tiles.last().unwrap();
-        let mut cmp_side = side_to_int(get_sides(&compare_tile.1, side_len)[1].to_vec());
-        if locked_tiles.len() >= image_width_in_tiles {
-            compare_tile = &locked_tiles[locked_tiles.len() - image_width_in_tiles];
-            cmp_side = side_to_int(get_sides(&compare_tile.1, side_len)[2].to_vec());
-        }
-        let locked_tile_nums = locked_tiles.iter().map(|t| t.0).collect::<Vec<_>>();
-        //println!("Locked tiles {:?}", locked_tile_nums);
-        for (tile_number, tile_content) in &tiles {
-            if locked_tile_nums.contains(&tile_number) {
-                continue;
-            }
-            let mut found = false;
-            //println!("Checking tile {}", tile_number);
-            let mut sides = get_sides(tile_content, side_len);
-            for (i, side) in sides.iter_mut().enumerate() {
-                //println!("{:?}", side);
-                let side_id = side_to_int(side.to_vec());
-                //println!("{} cmp {}", cmp_side, side_id);
-                if cmp_side == side_id {
-                    if i == 0 {
-                        let mut matching_tile = tile_content.to_vec();
-                        if locked_tiles.len() < image_width_in_tiles {
-                            matching_tile = mirror(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    } else if i == 1 {
-                        let mut matching_tile = tile_content.to_vec();
-                        if locked_tiles.len() < image_width_in_tiles {
-                            matching_tile = mirror(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        } else {
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    } else if i == 2 {
-                        let mut matching_tile = tile_content.to_vec();
-                        if locked_tiles.len() < image_width_in_tiles {
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        } else {
-                            matching_tile = mirror(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    } else {
-                        let mut matching_tile = tile_content.to_vec();
-
-                        if locked_tiles.len() >= image_width_in_tiles {
-                            matching_tile = mirror(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    }
-                }
-                side.reverse();
-                //println!("{:?}", side);
-                let rev_side_id = side_to_int(side.to_vec());
-                //println!("{} cmp {}", cmp_side, rev_side_id);
-                if cmp_side == rev_side_id {
-                    if i == 0 {
-                        let mut matching_tile = tile_content.to_vec();
-                        if locked_tiles.len() < image_width_in_tiles {
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        } else {
-                            matching_tile = mirror(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    } else if i == 1 {
-                        let mut matching_tile = tile_content.to_vec();
-                        if locked_tiles.len() < image_width_in_tiles {
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        } else {
-                            matching_tile = mirror(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    } else if i == 2 {
-                        let mut matching_tile = tile_content.to_vec();
-                        if locked_tiles.len() < image_width_in_tiles {
-                            matching_tile = mirror(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        } else {
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    } else {
-                        let mut matching_tile = tile_content.to_vec();
-                        if locked_tiles.len() < image_width_in_tiles {
-                            matching_tile = mirror(&matching_tile, side_len);
-                        } else {
-                            matching_tile = rotate_right(&matching_tile, side_len);
-                        }
-
-                        locked_tiles.push((tile_number, matching_tile));
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            if found {
-                break;
-            }
-        }
-        if locked_len == locked_tiles.len() {
-            panic!("Nothing found");
-        }
-    }
-
-    println!("{:?}", locked_tiles.iter().map(|t| t.0).collect::<Vec<_>>());
 }
 
 fn get_sides(tile_content: &Vec<char>, side_len: usize) -> Vec<Vec<char>> {
@@ -319,7 +266,7 @@ fn side_to_int(side: Vec<char>) -> u16 {
     )
 }
 
-fn rotate_right(tile: &Vec<char>, tile_len: usize) -> Vec<char> {
+fn rotate_right(tile: &mut Vec<char>, tile_len: usize) {
     let mut rotated = Vec::new();
     for i in 0..tile_len {
         let mut row = tile
@@ -333,10 +280,10 @@ fn rotate_right(tile: &Vec<char>, tile_len: usize) -> Vec<char> {
         rotated.append(&mut row);
     }
 
-    rotated
+    *tile = rotated;
 }
 
-fn mirror(tile: &Vec<char>, tile_len: usize) -> Vec<char> {
+fn mirror(tile: &mut Vec<char>, tile_len: usize) {
     let mut mirrored = Vec::new();
     for i in 0..tile_len {
         let mut row = tile
@@ -348,5 +295,68 @@ fn mirror(tile: &Vec<char>, tile_len: usize) -> Vec<char> {
             .collect::<Vec<_>>();
         mirrored.append(&mut row);
     }
-    mirrored
+    *tile = mirrored;
+}
+
+fn remove_edges(data: &Vec<char>, side_len: usize) -> Vec<char> {
+    let mut result = Vec::new();
+
+    result.append(
+        &mut data
+            .iter()
+            .skip(side_len + 1)
+            .take(side_len - 2)
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
+    for i in 2..side_len {
+        result.append(
+            &mut data
+                .iter()
+                .skip(i * side_len + 1)
+                .take(side_len - 2)
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    result
+}
+
+fn find(map: &mut Vec<char>, target: &Vec<char>, combined_len: usize) -> bool {
+    let mut found = false;
+    let target_non_empty = target
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| x == &&'#')
+        .collect::<Vec<_>>();
+    for i in 0..combined_len - 3 {
+        for j in 0..combined_len - 20 {
+            let pos = i * combined_len + j;
+            let sum = target_non_empty
+                .iter()
+                .map(|(k, c)| {
+                    if &&map[pos + (k / 20 * combined_len) + (k % 20)] == c {
+                        1
+                    } else {
+                        0
+                    }
+                })
+                .sum::<usize>();
+            if sum == target_non_empty.len() {
+                found = true;
+                for x in target_non_empty
+                    .iter()
+                    .map(|(k, _)| pos + (k / 20 * combined_len) + (k % 20))
+                {
+                    map[x] = 'O';
+                }
+            }
+        }
+    }
+    if found {
+        return true;
+    }
+
+    false
 }
